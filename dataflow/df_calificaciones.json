@@ -1,0 +1,95 @@
+{
+	"name": "df_calificaciones",
+	"properties": {
+		"type": "MappingDataFlow",
+		"typeProperties": {
+			"sources": [
+				{
+					"dataset": {
+						"referenceName": "calificaciones_csv",
+						"type": "DatasetReference"
+					},
+					"name": "source1"
+				}
+			],
+			"sinks": [
+				{
+					"dataset": {
+						"referenceName": "calificaciones_sql",
+						"type": "DatasetReference"
+					},
+					"name": "sink1"
+				}
+			],
+			"transformations": [
+				{
+					"name": "derivedColumn1"
+				},
+				{
+					"name": "split1"
+				},
+				{
+					"name": "aggregate1"
+				},
+				{
+					"name": "derivedColumn2"
+				}
+			],
+			"scriptLines": [
+				"source(output(",
+				"          calificacion_id as string,",
+				"          pedido_id as string,",
+				"          cliente_id as string,",
+				"          fecha_calificacion as string,",
+				"          puntuacion as string,",
+				"          comentario as string",
+				"     ),",
+				"     allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     ignoreNoFilesFound: false) ~> source1",
+				"source1 derive(calificacion_id = upper(trim(regexReplace(calificacion_id, '\\\\s+', ' '))),",
+				"          pedido_id = upper(trim(regexReplace(pedido_id, '\\\\s+', ' '))),",
+				"          cliente_id = upper(trim(regexReplace(cliente_id, '\\\\s+', ' '))),",
+				"          fecha_calificacion = trim(replace(replace(fecha_calificacion, '/', '-'), '.', '-')),",
+				"          puntuacion = trim(replace(puntuacion, ',', '.')),",
+				"          comentario = iif(isNull(comentario) || trim(comentario) == '', 'Sin Comentario', initCap(trim(regexReplace(comentario, '\\\\s+', ' '))))) ~> derivedColumn1",
+				"derivedColumn1 split(!isNull(calificacion_id) && length(trim(calificacion_id)) > 0 && !isNull(pedido_id) && length(trim(pedido_id)) > 0 && !isNull(cliente_id) && length(trim(cliente_id)) > 0 && !isNull(puntuacion) && toInteger(puntuacion) >= 1 && toInteger(puntuacion) <= 5 && isDate(fecha_calificacion, 'yyyy-MM-dd'),",
+				"     disjoint: false) ~> split1@(validos, rechazados)",
+				"split1@validos aggregate(groupBy(calificacion_id),",
+				"     pedido_id = first(pedido_id),",
+				"          cliente_id = first(cliente_id),",
+				"          fecha_calificacion = max(fecha_calificacion),",
+				"          puntuacion = last(puntuacion),",
+				"          comentario = first(comentario)) ~> aggregate1",
+				"aggregate1 derive(fecha_calificacion = toDate(fecha_calificacion, 'yyyy-MM-dd'),",
+				"          puntuacion = toInteger(puntuacion)) ~> derivedColumn2",
+				"derivedColumn2 sink(allowSchemaDrift: true,",
+				"     validateSchema: false,",
+				"     input(",
+				"          calificacion_id as string,",
+				"          pedido_id as string,",
+				"          cliente_id as string,",
+				"          fecha_calificacion as date,",
+				"          puntuacion as integer,",
+				"          comentario as string",
+				"     ),",
+				"     deletable:false,",
+				"     insertable:true,",
+				"     updateable:false,",
+				"     upsertable:false,",
+				"     format: 'table',",
+				"     skipDuplicateMapInputs: true,",
+				"     skipDuplicateMapOutputs: true,",
+				"     errorHandlingOption: 'stopOnFirstError',",
+				"     mapColumn(",
+				"          calificacion_id,",
+				"          pedido_id,",
+				"          cliente_id,",
+				"          fecha_calificacion,",
+				"          puntuacion,",
+				"          comentario",
+				"     )) ~> sink1"
+			]
+		}
+	}
+}
